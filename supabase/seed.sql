@@ -1,0 +1,5 @@
+-- ==============================================================================
+-- SEED FILE: வதம்பை இளந்தளிர் குழு (Vadambai Ilanthazhir Kuzhu)
+-- Clean Initial State: No sample or demo data included.
+-- Real user accounts and data are populated through actual registrations and Leader entries.
+-- ==============================================================================

@@ -1,0 +1,21 @@
+export const initialDemoData = {
+  settings: {
+    id: 'primary',
+    group_name_ta: 'வதம்பை இளந்தளிர் குழு',
+    group_name_en: 'Vadambai Ilanthazhir Kuzhu',
+    contact_phone: '',
+    logo_url: '',
+    updated_at: new Date().toISOString(),
+  },
+  collectors: [],
+  profiles: [],
+  payments: [],
+  dances: [],
+  income: [],
+  expenses: [],
+  events: [],
+  announcements: [],
+  attendance_sessions: [],
+  gallery: [],
+  notifications: [],
+};
