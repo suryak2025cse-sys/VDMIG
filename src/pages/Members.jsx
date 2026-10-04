@@ -22,6 +22,7 @@ import {
   MoreVertical,
   Trash2,
   AlertTriangle,
+  UserPlus,
 } from 'lucide-react';
 
 export default function Members() {
@@ -42,6 +43,15 @@ export default function Members() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [selectedNewRole, setSelectedNewRole] = useState('member');
   const [showRoleModal, setShowRoleModal] = useState(false);
+
+  // Add Member Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addPhone, setAddPhone] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addRole, setAddRole] = useState('member');
+  const [addStatus, setAddStatus] = useState('approved');
+  const [addError, setAddError] = useState('');
 
   useEffect(() => {
     loadMembers();
@@ -119,6 +129,38 @@ export default function Members() {
     }
   };
 
+  const handleAddMember = async (e) => {
+    e.preventDefault();
+    setAddError('');
+    if (!addName.trim() || !addPhone.trim()) {
+      setAddError('பெயர் மற்றும் அலைபேசி எண் கட்டாயம் (Name & Phone required)');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await dataService.createProfile({
+        name: addName.trim(),
+        phone: addPhone.trim(),
+        email: addEmail.trim() || `${addPhone.trim()}@vadambai.org`,
+        role: addRole,
+        status: addStatus,
+      });
+
+      await loadMembers();
+      setShowAddModal(false);
+      setAddName('');
+      setAddPhone('');
+      setAddEmail('');
+      setAddRole('member');
+      setAddStatus('approved');
+    } catch (err) {
+      setAddError(err.message || 'Failed to add member');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Filter & Search logic
   const filteredMembers = members.filter((m) => {
     const matchesSearch =
@@ -148,10 +190,24 @@ export default function Members() {
             {t('members.subtitle')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200">
             {members.length} {t('dashboard.totalMembers')}
           </span>
+
+          {(isSuperAdmin || isLeader) && (
+            <button
+              type="button"
+              onClick={() => {
+                setAddError('');
+                setShowAddModal(true);
+              }}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>உறுப்பினர் சேர்க்கை (Add Member)</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -529,6 +585,117 @@ export default function Members() {
               </button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Add New Member Modal */}
+      {showAddModal && (
+        <Modal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          title="புதிய உறுப்பினர் சேர்க்கை (Add Member)"
+          maxWidth="max-w-lg"
+        >
+          <form onSubmit={handleAddMember} className="space-y-4">
+            {addError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{addError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                முழு பெயர் (Full Name) *
+              </label>
+              <input
+                type="text"
+                required
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="எ.கா: சு. அருண் குமார்"
+                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500 bg-slate-50/50 font-bold"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  அலைபேசி எண் (Phone Number) *
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={addPhone}
+                  onChange={(e) => setAddPhone(e.target.value)}
+                  placeholder="9876543210"
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500 bg-slate-50/50 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  மின்னஞ்சல் (Email - விருப்பத்தேர்வு)
+                </label>
+                <input
+                  type="email"
+                  value={addEmail}
+                  onChange={(e) => setAddEmail(e.target.value)}
+                  placeholder="arun@vadambai.org"
+                  className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-amber-500 bg-slate-50/50"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  பொறுப்பு (Role)
+                </label>
+                <select
+                  value={addRole}
+                  onChange={(e) => setAddRole(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50/50 focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="member">{t('roles.member')}</option>
+                  <option value="leader">{t('roles.leader')}</option>
+                  <option value="payment_collector">{t('roles.payment_collector')}</option>
+                  {isSuperAdmin && <option value="super_admin">{t('roles.super_admin')}</option>}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  நிலை (Status)
+                </label>
+                <select
+                  value={addStatus}
+                  onChange={(e) => setAddStatus(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50/50 focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="approved">{t('status.approved')}</option>
+                  <option value="pending">{t('status.pending')}</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="px-5 py-2 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-xl shadow-md shadow-amber-500/20"
+              >
+                {actionLoading ? t('common.loading') : '+ சேர்க்க (Add Member)'}
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
     </div>
