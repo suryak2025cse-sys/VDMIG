@@ -390,7 +390,7 @@ CREATE POLICY "Update own notifications" ON public.notifications
     FOR UPDATE USING (auth.uid() = user_id);
 
 CREATE POLICY "Insert notifications" ON public.notifications
-    FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+    FOR INSERT WITH CHECK (true);
 
 -- ==============================================================================
 -- STORAGE BUCKETS CONFIGURATION (Run in Supabase Storage SQL Editor)

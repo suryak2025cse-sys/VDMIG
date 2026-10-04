@@ -88,13 +88,17 @@ export default function Members() {
     try {
       if (actionType === 'approve') {
         await dataService.updateProfileStatus(selectedMember.id, 'approved');
-        await dataService.createNotification({
-          user_id: selectedMember.id,
-          title: 'உறுப்பினர் சேர்க்கை அங்கீகரிக்கப்பட்டது',
-          message: 'தங்களின் வதம்பை இளந்தளிர் குழு உறுப்பினர் கோரிக்கை அங்கீகரிக்கப்பட்டது.',
-          type: 'approval',
-          link: '/dashboard',
-        });
+        try {
+          await dataService.createNotification({
+            user_id: selectedMember.id,
+            title: 'உறுப்பினர் சேர்க்கை அங்கீகரிக்கப்பட்டது',
+            message: 'தங்களின் வதம்பை இளந்தளிர் குழு உறுப்பினர் கோரிக்கை அங்கீகரிக்கப்பட்டது.',
+            type: 'approval',
+            link: '/dashboard',
+          });
+        } catch (notifErr) {
+          console.warn('Notification insert skipped:', notifErr);
+        }
       } else if (actionType === 'reject') {
         await dataService.updateProfileStatus(selectedMember.id, 'rejected', rejectionReason);
       } else if (actionType === 'block') {

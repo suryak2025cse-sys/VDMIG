@@ -869,9 +869,17 @@ export const dataService = {
 
   async createNotification(notifData) {
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase.from('notifications').insert(notifData).select().single();
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase.from('notifications').insert(notifData).select();
+        if (error) {
+          console.warn('Supabase notification insert warning:', error.message);
+          return null;
+        }
+        return data && data.length > 0 ? data[0] : null;
+      } catch (err) {
+        console.warn('Notification creation skipped:', err.message);
+        return null;
+      }
     }
     const local = getLocalData();
     const newNotif = {
