@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { dataService } from '../services/dataService';
 import LoadingSpinner from '../components/LoadingSpinner';
+import logoImg from '../assets/Logo.png';
 import {
   Settings as SettingsIcon,
   Shield,
@@ -159,10 +160,23 @@ export default function Settings() {
       <form onSubmit={handleSaveAll} className="space-y-6">
         {/* Section 1: Group Details */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
-          <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
-            <span>🌱</span>
-            <span>{t('settings.groupInfo')}</span>
-          </h3>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+              <img
+                src={logoImg}
+                alt="Logo"
+                className="w-6 h-6 object-contain rounded-md"
+              />
+              <span>{t('settings.groupInfo')}</span>
+            </h3>
+            <div className="w-10 h-10 rounded-xl bg-white p-0.5 border border-amber-300 shadow-xs flex items-center justify-center">
+              <img
+                src={logoImg}
+                alt="Official Logo"
+                className="w-full h-full object-contain rounded-lg"
+              />
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import loginBg from '../assets/Login_page.jpeg';
+import logoImg from '../assets/Logo.png';
 import {
   User,
   Phone,
@@ -78,26 +80,36 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-amber-50/50 via-white to-slate-50 flex flex-col justify-center py-10 sm:px-6 lg:px-8">
+    <div
+      className="min-h-screen relative flex flex-col justify-center py-10 sm:px-6 lg:px-8 bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: `url(${loginBg})` }}
+    >
+      {/* Background Overlay */}
+      <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-[2px]"></div>
+
       {/* Top Bar with Language Switcher */}
-      <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-10">
         <LanguageSwitcher />
       </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center px-4">
-        <div className="mx-auto w-14 h-14 rounded-3xl bg-linear-to-tr from-amber-500 via-amber-600 to-emerald-600 text-white flex items-center justify-center font-bold text-2xl shadow-xl shadow-amber-500/20 mb-3 border border-amber-300/40">
-          🌱
+      <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md text-center px-4">
+        <div className="mx-auto w-18 h-18 sm:w-20 sm:h-20 rounded-3xl bg-white/95 p-1.5 shadow-2xl shadow-amber-500/30 mb-3 border-2 border-amber-400/80 flex items-center justify-center">
+          <img
+            src={logoImg}
+            alt="வதம்பை இளந்தளிர் லோகோ"
+            className="w-full h-full object-contain rounded-2xl"
+          />
         </div>
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+        <h1 className="text-2xl font-extrabold text-white tracking-tight drop-shadow-md">
           வதம்பை இளந்தளிர் குழு
         </h1>
-        <p className="text-xs text-slate-500 font-medium">
+        <p className="text-xs text-amber-200 font-medium drop-shadow-sm">
           {t('auth.registerSubtitle')}
         </p>
       </div>
 
-      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-lg px-4">
-        <div className="bg-white py-8 px-6 shadow-xl rounded-3xl sm:px-10 border border-slate-200">
+      <div className="relative z-10 mt-6 sm:mx-auto sm:w-full sm:max-w-lg px-4">
+        <div className="bg-white/95 backdrop-blur-md py-8 px-6 shadow-2xl rounded-3xl sm:px-10 border border-white/60">
           <div className="mb-5">
             <h2 className="text-lg font-bold text-slate-800">{t('auth.registerTitle')}</h2>
             {/* Informative notice on pending status */}

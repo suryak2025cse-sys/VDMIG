@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import loginBg from '../assets/Login_page.jpeg';
+import logoImg from '../assets/Logo.png';
 import { Clock, RefreshCw, LogOut, Phone, ShieldCheck } from 'lucide-react';
 
 export default function PendingApproval() {
@@ -26,15 +28,24 @@ export default function PendingApproval() {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-amber-50/50 via-white to-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+    <div
+      className="min-h-screen relative flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: `url(${loginBg})` }}
+    >
+      <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-[2px]"></div>
+
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-10">
         <LanguageSwitcher />
       </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md px-4">
-        <div className="bg-white py-10 px-6 shadow-xl rounded-3xl sm:px-10 border border-slate-200 text-center">
-          <div className="w-16 h-16 rounded-3xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-5 shadow-inner border border-amber-200">
-            <Clock className="w-8 h-8 animate-pulse" />
+      <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md px-4">
+        <div className="bg-white/95 backdrop-blur-md py-10 px-6 shadow-2xl rounded-3xl sm:px-10 border border-white/60 text-center">
+          <div className="w-20 h-20 rounded-3xl bg-white p-1.5 shadow-md border border-amber-300 mx-auto mb-4 flex items-center justify-center">
+            <img
+              src={logoImg}
+              alt="Logo"
+              className="w-full h-full object-contain rounded-2xl"
+            />
           </div>
 
           <h2 className="text-xl font-extrabold text-slate-900 mb-2">

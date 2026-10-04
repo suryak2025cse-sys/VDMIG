@@ -19,6 +19,7 @@ import {
   X,
   ShieldCheck,
 } from 'lucide-react';
+import logoImg from '../assets/Logo.png';
 
 export default function Sidebar({ mobileOpen, onCloseMobile }) {
   const { isSuperAdmin, isLeader, isPaymentCollector, isApproved, role } = useAuth();
@@ -116,8 +117,12 @@ export default function Sidebar({ mobileOpen, onCloseMobile }) {
       {/* Village Group Header in Sidebar */}
       <div className="p-4 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-            🌱
+          <div className="w-8 h-8 rounded-xl bg-white p-0.5 border border-amber-400/80 shadow-xs flex items-center justify-center shrink-0">
+            <img
+              src={logoImg}
+              alt="லோகோ"
+              className="w-full h-full object-contain rounded-lg"
+            />
           </div>
           <div>
             <h2 className="text-xs font-extrabold text-slate-800 leading-snug">

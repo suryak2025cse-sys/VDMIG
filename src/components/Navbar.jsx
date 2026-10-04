@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageSwitcher from './LanguageSwitcher';
 import { dataService } from '../services/dataService';
+import logoImg from '../assets/Logo.png';
 import {
   Bell,
   LogOut,
@@ -64,8 +65,12 @@ export default function Navbar({ onToggleMobileSidebar }) {
             </button>
 
             <Link to="/" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-linear-to-br from-amber-500 via-amber-600 to-emerald-600 text-white flex items-center justify-center font-bold shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform shrink-0 border border-amber-400/40">
-                <span className="text-xl sm:text-2xl">🌱</span>
+              <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white p-0.5 border-2 border-amber-400/80 shadow-md shadow-amber-500/15 group-hover:scale-105 transition-transform shrink-0 flex items-center justify-center">
+                <img
+                  src={logoImg}
+                  alt="வதம்பை இளந்தளிர் லோகோ"
+                  className="w-full h-full object-contain rounded-xl"
+                />
               </div>
               <div className="flex flex-col">
                 <span className="text-base sm:text-lg font-extrabold text-slate-900 leading-tight tracking-tight group-hover:text-amber-700 transition-colors">

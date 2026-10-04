@@ -44,9 +44,14 @@ export const dataService = {
   // -------------------------------------------------------------
   async getSettings() {
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase.from('system_settings').select('*').single();
+      const { data, error } = await supabase.from('system_settings').select('*').maybeSingle();
       if (error) throw error;
-      return data;
+      return data || {
+        id: 'primary',
+        group_name_ta: 'வதம்பை இளந்தளிர் குழு',
+        group_name_en: 'Vadambai Ilanthazhir Kuzhu',
+        contact_phone: '',
+      };
     }
     const local = getLocalData();
     return local.settings;
@@ -56,11 +61,13 @@ export const dataService = {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase
         .from('system_settings')
-        .upsert({ id: 'primary', ...settingsData, updated_at: new Date().toISOString() })
-        .select()
-        .single();
+        .upsert(
+          { id: 'primary', ...settingsData, updated_at: new Date().toISOString() },
+          { onConflict: 'id' }
+        )
+        .select();
       if (error) throw error;
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     }
     const local = getLocalData();
     local.settings = { ...local.settings, ...settingsData, updated_at: new Date().toISOString() };
@@ -75,7 +82,7 @@ export const dataService = {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase.from('payment_collectors').select('*').order('slot_number', { ascending: true });
       if (error) throw error;
-      return data;
+      return data || [];
     }
     const local = getLocalData();
     return local.collectors || [];
@@ -85,12 +92,13 @@ export const dataService = {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase
         .from('payment_collectors')
-        .update({ ...collectorData, updated_at: new Date().toISOString() })
-        .eq('slot_number', slotNumber)
-        .select()
-        .single();
+        .upsert(
+          { slot_number: slotNumber, ...collectorData, updated_at: new Date().toISOString() },
+          { onConflict: 'slot_number' }
+        )
+        .select();
       if (error) throw error;
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     }
     const local = getLocalData();
     const index = local.collectors.findIndex(c => c.slot_number === slotNumber);
@@ -110,7 +118,7 @@ export const dataService = {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
       if (error) throw error;
-      return data;
+      return data || [];
     }
     const local = getLocalData();
     return local.profiles || [];
@@ -118,7 +126,7 @@ export const dataService = {
 
   async getProfileById(userId) {
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
       if (error) throw error;
       return data;
     }
@@ -150,10 +158,9 @@ export const dataService = {
         .from('profiles')
         .update({ status, rejection_reason: rejectionReason, updated_at: new Date().toISOString() })
         .eq('id', userId)
-        .select()
-        .single();
+        .select();
       if (error) throw error;
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     }
     const local = getLocalData();
     const index = local.profiles.findIndex(p => p.id === userId);
@@ -173,10 +180,9 @@ export const dataService = {
         .from('profiles')
         .update({ role, updated_at: new Date().toISOString() })
         .eq('id', userId)
-        .select()
-        .single();
+        .select();
       if (error) throw error;
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     }
     const local = getLocalData();
     const index = local.profiles.findIndex(p => p.id === userId);
@@ -195,10 +201,9 @@ export const dataService = {
         .from('profiles')
         .update({ ...updateFields, updated_at: new Date().toISOString() })
         .eq('id', userId)
-        .select()
-        .single();
+        .select();
       if (error) throw error;
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     }
     const local = getLocalData();
     const index = local.profiles.findIndex(p => p.id === userId);
@@ -233,9 +238,9 @@ export const dataService = {
 
   async submitPayment(paymentData) {
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase.from('payments').insert(paymentData).select().single();
+      const { data, error } = await supabase.from('payments').insert(paymentData).select();
       if (error) throw error;
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     }
     const local = getLocalData();
     const newPayment = {
@@ -266,10 +271,9 @@ export const dataService = {
           updated_at: verifiedAt,
         })
         .eq('id', paymentId)
-        .select()
-        .single();
+        .select();
       if (error) throw error;
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     }
     const local = getLocalData();
     const index = local.payments.findIndex(p => p.id === paymentId);
@@ -298,10 +302,9 @@ export const dataService = {
           updated_at: verifiedAt,
         })
         .eq('id', paymentId)
-        .select()
-        .single();
+        .select();
       if (error) throw error;
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     }
     const local = getLocalData();
     const index = local.payments.findIndex(p => p.id === paymentId);
