@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { initialDemoData } from './mockData';
+import { cloudinaryUpload, cloudinaryDelete } from './cloudinaryService';
 
 const STORAGE_KEY = 'vdmig_village_data_v2';
 
@@ -461,12 +462,20 @@ export const dataService = {
 
   async deleteDance(danceId) {
     if (isSupabaseConfigured) {
+      const { data: record } = await supabase.from('dance_performances').select('song_url').eq('id', danceId).maybeSingle();
       const { error } = await supabase.from('dance_performances').delete().eq('id', danceId);
       if (error) throw error;
+      if (record?.song_url) {
+        await cloudinaryDelete(record.song_url, 'video').catch(() => {});
+      }
       return true;
     }
     const local = getLocalData();
-    local.dances = local.dances.filter(d => d.id !== danceId);
+    const item = (local.dances || []).find(d => d.id === danceId);
+    if (item?.song_url) {
+      await cloudinaryDelete(item.song_url, 'video').catch(() => {});
+    }
+    local.dances = (local.dances || []).filter(d => d.id !== danceId);
     saveLocalData(local);
     return true;
   },
@@ -855,12 +864,20 @@ export const dataService = {
 
   async deleteGalleryImage(id) {
     if (isSupabaseConfigured) {
+      const { data: record } = await supabase.from('gallery').select('image_url').eq('id', id).maybeSingle();
       const { error } = await supabase.from('gallery').delete().eq('id', id);
       if (error) throw error;
+      if (record?.image_url) {
+        await cloudinaryDelete(record.image_url, 'image').catch(() => {});
+      }
       return true;
     }
     const local = getLocalData();
-    local.gallery = local.gallery.filter(g => g.id !== id);
+    const item = (local.gallery || []).find(g => g.id === id);
+    if (item?.image_url) {
+      await cloudinaryDelete(item.image_url, 'image').catch(() => {});
+    }
+    local.gallery = (local.gallery || []).filter(g => g.id !== id);
     saveLocalData(local);
     return true;
   },
@@ -939,22 +956,18 @@ export const dataService = {
   },
 
   // -------------------------------------------------------------
-  // FILE STORAGE HELPER
+  // CLOUDINARY MEDIA STORAGE HELPER
   // -------------------------------------------------------------
   async uploadFile(bucket, file, customName) {
-    if (isSupabaseConfigured) {
-      const ext = file.name.split('.').pop();
-      const fileName = `${customName || Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-      const { data, error } = await supabase.storage.from(bucket).upload(fileName, file);
-      if (error) throw error;
-      const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
-      return publicUrlData.publicUrl;
-    }
-    // In local demo mode, create a local blob object URL or Data URL
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.readAsDataURL(file);
+    const result = await cloudinaryUpload({
+      bucket,
+      file,
+      customName,
     });
+    return result.url;
+  },
+
+  async deleteFile(publicIdOrUrl, resourceType = 'image') {
+    return await cloudinaryDelete(publicIdOrUrl, resourceType);
   },
 };

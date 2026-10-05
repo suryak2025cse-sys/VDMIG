@@ -22,6 +22,7 @@ import {
   MoreVertical,
   Trash2,
   AlertTriangle,
+  AlertCircle,
   UserPlus,
 } from 'lucide-react';
 
