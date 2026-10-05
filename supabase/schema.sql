@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS public.income (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     date DATE NOT NULL DEFAULT CURRENT_DATE,
     source TEXT NOT NULL,
+    paid_by TEXT,
     description TEXT,
     amount NUMERIC NOT NULL CHECK (amount > 0),
     collected_by TEXT NOT NULL,

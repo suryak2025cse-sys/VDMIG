@@ -36,10 +36,12 @@ export default function Income() {
   // Form Fields
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [source, setSource] = useState('Member Contribution');
+  const [paidBy, setPaidBy] = useState('');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [collectedBy, setCollectedBy] = useState('');
   const [notes, setNotes] = useState('');
+  const [membersList, setMembersList] = useState([]);
 
   // Delete State
   const [itemToDelete, setItemToDelete] = useState(null);
@@ -48,6 +50,7 @@ export default function Income() {
 
   useEffect(() => {
     loadIncome();
+    loadMembers();
   }, []);
 
   const loadIncome = async () => {
@@ -62,10 +65,20 @@ export default function Income() {
     }
   };
 
+  const loadMembers = async () => {
+    try {
+      const data = await dataService.getProfiles();
+      setMembersList(data || []);
+    } catch (err) {
+      console.error('Error fetching members list:', err);
+    }
+  };
+
   const handleOpenAdd = () => {
     setEditingItem(null);
     setDate(new Date().toISOString().split('T')[0]);
     setSource('Member Contribution');
+    setPaidBy('');
     setDescription('');
     setAmount('');
     setCollectedBy(user?.name || '');
@@ -77,6 +90,7 @@ export default function Income() {
     setEditingItem(item);
     setDate(item.date);
     setSource(item.source);
+    setPaidBy(item.paid_by || '');
     setDescription(item.description || '');
     setAmount(String(item.amount));
     setCollectedBy(item.collected_by || '');
@@ -95,6 +109,7 @@ export default function Income() {
       const payload = {
         date,
         source,
+        paid_by: paidBy,
         description,
         amount: Number(amount),
         collected_by: collectedBy,
@@ -138,6 +153,7 @@ export default function Income() {
   const filteredIncome = incomeList.filter((item) => {
     const matchesSearch =
       item.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.paid_by?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.collected_by?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.source?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSource = sourceFilter === 'all' || item.source === sourceFilter;
@@ -204,7 +220,7 @@ export default function Income() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="விளக்கம் அல்லது வசூலித்தவர் தேடுக..."
+            placeholder={isTamil ? "விளக்கம், செலுத்தியவர் அல்லது வசூலித்தவர் தேடுக..." : "Search description, paid by or collected by..."}
             className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
           />
         </div>
@@ -214,22 +230,22 @@ export default function Income() {
           onChange={(e) => setSourceFilter(e.target.value)}
           className="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-200 bg-white text-slate-700 focus:ring-2 focus:ring-emerald-500 cursor-pointer w-full sm:w-auto"
         >
-          <option value="all">வருமான மூலம்: அனைத்தும்</option>
-          <option value="Member Contribution">உறுப்பினர் சந்தா</option>
-          <option value="Village Donation">கிராம நன்கொடை</option>
-          <option value="Sponsorship">ஸ்பான்சர்ஷிப்</option>
-          <option value="Other">இதர வருமானம்</option>
+          <option value="all">{isTamil ? 'வருமான மூலம்: அனைத்தும்' : 'Source: All'}</option>
+          <option value="Member Contribution">{isTamil ? 'உறுப்பினர் சந்தா' : 'Member Contribution'}</option>
+          <option value="Village Donation">{isTamil ? 'கிராம நன்கொடை' : 'Village Donation'}</option>
+          <option value="Sponsorship">{isTamil ? 'ஸ்பான்சர்ஷிப்' : 'Sponsorship'}</option>
+          <option value="Other">{isTamil ? 'இதர வருமானம்' : 'Other'}</option>
         </select>
       </div>
 
       {/* Income Records List */}
       {loading ? (
-        <LoadingSpinner text="வருமான பதிவுகள் ஏற்றப்படுகின்றன..." />
+        <LoadingSpinner text={isTamil ? "வருமான பதிவுகள் ஏற்றப்படுகின்றன..." : "Loading income records..."} />
       ) : filteredIncome.length === 0 ? (
         <EmptyState
           icon={TrendingUp}
           title={t('income.noIncome')}
-          description="புதிய வருமானம் மற்றும் சந்தா பதிவுகளைச் சேர்க்கவும்."
+          description={isTamil ? "புதிய வருமானம் மற்றும் சந்தா பதிவுகளைச் சேர்க்கவும்." : "Record and track community funds and contributions."}
           actionButton={
             <button
               type="button"
@@ -248,8 +264,8 @@ export default function Income() {
                 key={item.id}
                 className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors"
               >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-extrabold text-slate-900 text-sm">
                       {item.source}
                     </span>
@@ -257,13 +273,28 @@ export default function Income() {
                       📅 {item.date}
                     </span>
                   </div>
+
                   {item.description && (
                     <p className="text-slate-600 text-xs">{item.description}</p>
                   )}
-                  <p className="text-[11px] text-slate-400">
-                    பெற்றுக் கொண்டவர்: <span className="font-semibold text-slate-700">{item.collected_by}</span>
-                    {item.notes ? ` • ${item.notes}` : ''}
-                  </p>
+
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                    {item.paid_by && (
+                      <p>
+                        {isTamil ? 'செலுத்தியவர்:' : 'Paid by:'}{' '}
+                        <span className="font-bold text-slate-800">{item.paid_by}</span>
+                      </p>
+                    )}
+                    <p>
+                      {isTamil ? 'பெற்றுக் கொண்டவர்:' : 'Collected by:'}{' '}
+                      <span className="font-semibold text-slate-700">{item.collected_by}</span>
+                    </p>
+                    {item.notes && (
+                      <p className="text-slate-400">
+                        • {item.notes}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
@@ -302,7 +333,7 @@ export default function Income() {
         <Modal
           isOpen={showModal}
           onClose={() => setShowModal(false)}
-          title={editingItem ? 'வருமான பதிவு திருத்து' : t('income.addIncome')}
+          title={editingItem ? (t('income.editIncome') || 'வருமான பதிவு திருத்து') : t('income.addIncome')}
           maxWidth="max-w-md"
         >
           <form onSubmit={handleSave} className="space-y-4">
@@ -328,11 +359,33 @@ export default function Income() {
                 onChange={(e) => setSource(e.target.value)}
                 className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
               >
-                <option value="Member Contribution">உறுப்பினர் சந்தா (Member Contribution)</option>
-                <option value="Village Donation">கிராம நன்கொடை (Village Donation)</option>
-                <option value="Sponsorship">ஸ்பான்சர்ஷிப் (Sponsorship)</option>
-                <option value="Other">இதர வருமானம் (Other)</option>
+                <option value="Member Contribution">{isTamil ? 'உறுப்பினர் சந்தா (Member Contribution)' : 'Member Contribution'}</option>
+                <option value="Village Donation">{isTamil ? 'கிராம நன்கொடை (Village Donation)' : 'Village Donation'}</option>
+                <option value="Sponsorship">{isTamil ? 'ஸ்பான்சர்ஷிப் (Sponsorship)' : 'Sponsorship'}</option>
+                <option value="Other">{isTamil ? 'இதர வருமானம் (Other)' : 'Other'}</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {t('income.paidBy')} *
+              </label>
+              <input
+                type="text"
+                required
+                value={paidBy}
+                onChange={(e) => setPaidBy(e.target.value)}
+                placeholder={isTamil ? "தொகை செலுத்தியவர் / நன்கொடையாளர் பெயர்" : "Name of member / contributor who paid"}
+                list="income-member-names-list"
+                className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+              />
+              <datalist id="income-member-names-list">
+                {membersList.map((m) => (
+                  <option key={m.id} value={m.name}>
+                    {m.phone ? `${m.name} (${m.phone})` : m.name}
+                  </option>
+                ))}
+              </datalist>
             </div>
 
             <div>
@@ -359,7 +412,7 @@ export default function Income() {
                 required
                 value={collectedBy}
                 onChange={(e) => setCollectedBy(e.target.value)}
-                placeholder="பெயர்"
+                placeholder={isTamil ? "பெயர்" : "Name"}
                 className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
               />
             </div>
@@ -372,7 +425,7 @@ export default function Income() {
                 type="text"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="விவரம்"
+                placeholder={isTamil ? "விவரம்" : "Description"}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
               />
             </div>
@@ -385,7 +438,7 @@ export default function Income() {
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="கூடுதல் குறிப்பு"
+                placeholder={isTamil ? "கூடுதல் குறிப்பு" : "Additional note"}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
               />
             </div>

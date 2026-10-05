@@ -221,7 +221,9 @@ export const en = {
     title: 'Income Management',
     subtitle: 'Record and track all community funds and contributions',
     addIncome: 'Record New Income',
+    editIncome: 'Edit Income Record',
     source: 'Income Source',
+    paidBy: 'Paid By / Contributor',
     collectedBy: 'Collected By',
     sources: {
       memberContribution: 'Member Contribution',
