@@ -478,7 +478,15 @@ export const dataService = {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase.from('income').select('*').order('date', { ascending: false });
       if (error) throw error;
-      return data;
+      return (data || []).map(item => {
+        if (!item.paid_by && item.notes && item.notes.includes('Paid by:')) {
+          const match = item.notes.match(/(?:\(?Paid by:\s*([^)]+)\)?)/i);
+          if (match && match[1]) {
+            return { ...item, paid_by: match[1].trim() };
+          }
+        }
+        return item;
+      });
     }
     const local = getLocalData();
     return (local.income || []).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -487,7 +495,23 @@ export const dataService = {
   async createIncome(incomeData) {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase.from('income').insert(incomeData).select().single();
-      if (error) throw error;
+      if (error) {
+        // If paid_by column does not exist yet in Supabase schema cache, fallback gracefully
+        if (error.message && (error.message.includes('paid_by') || error.message.includes('schema cache'))) {
+          const fallbackData = { ...incomeData };
+          const payer = fallbackData.paid_by;
+          delete fallbackData.paid_by;
+          if (payer) {
+            fallbackData.notes = fallbackData.notes 
+              ? `${fallbackData.notes} (Paid by: ${payer})`
+              : `Paid by: ${payer}`;
+          }
+          const { data: retryData, error: retryError } = await supabase.from('income').insert(fallbackData).select().single();
+          if (retryError) throw retryError;
+          return retryData ? { ...retryData, paid_by: payer } : retryData;
+        }
+        throw error;
+      }
       return data;
     }
     const local = getLocalData();
@@ -511,7 +535,28 @@ export const dataService = {
         .eq('id', id)
         .select()
         .single();
-      if (error) throw error;
+      if (error) {
+        // If paid_by column does not exist yet in Supabase schema cache, fallback gracefully
+        if (error.message && (error.message.includes('paid_by') || error.message.includes('schema cache'))) {
+          const fallbackData = { ...incomeData, amount: Number(incomeData.amount), updated_at: new Date().toISOString() };
+          const payer = fallbackData.paid_by;
+          delete fallbackData.paid_by;
+          if (payer) {
+            fallbackData.notes = fallbackData.notes 
+              ? `${fallbackData.notes} (Paid by: ${payer})`
+              : `Paid by: ${payer}`;
+          }
+          const { data: retryData, error: retryError } = await supabase
+            .from('income')
+            .update(fallbackData)
+            .eq('id', id)
+            .select()
+            .single();
+          if (retryError) throw retryError;
+          return retryData ? { ...retryData, paid_by: payer } : retryData;
+        }
+        throw error;
+      }
       return data;
     }
     const local = getLocalData();
