@@ -81,15 +81,24 @@ export async function cloudinaryUpload({ file, bucket = 'gallery', customName = 
 
   // 2. Try Serverless Upload Endpoint first (Vercel / Node backend)
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('folder', folder);
-    formData.append('resource_type', resourceType);
-    if (customName) formData.append('custom_name', customName);
+    const base64Data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
 
     const apiResponse = await fetch('/api/cloudinary-upload', {
       method: 'POST',
-      body: formData,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file: base64Data,
+        folder,
+        resource_type: resourceType,
+        custom_name: customName,
+      }),
     });
 
     if (apiResponse.ok) {
@@ -103,9 +112,12 @@ export async function cloudinaryUpload({ file, bucket = 'gallery', customName = 
           bytes: data.bytes,
         };
       }
+    } else {
+      const errJson = await apiResponse.json().catch(() => ({}));
+      console.warn('Vercel Cloudinary upload API error:', errJson?.error || apiResponse.statusText);
     }
   } catch (err) {
-    // If /api endpoint is not available (e.g. running in pure Vite dev without serverless runtime), fall through to signed or preset upload
+    console.warn('Vercel Cloudinary upload API call failed:', err);
   }
 
   // 3. Try Server-side Signed Direct Upload if sign endpoint is available
