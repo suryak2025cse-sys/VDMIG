@@ -160,20 +160,32 @@ export default function Gallery() {
         });
         if (updated) {
           setSelectedAlbum(prev => ({ ...prev, ...updated }));
+          setAlbums(prev => prev.map(a => (a.id === selectedAlbum.id ? { ...a, ...updated } : a)));
         }
         setToastMessage('ஆல்பம் தகவல்கள் வெற்றிகரமாக புதுப்பிக்கப்பட்டன!');
       } else {
-        await dataService.createAlbum({
+        const created = await dataService.createAlbum({
           name: albumName.trim(),
           description: albumDesc.trim(),
           cover_image_url: coverUrl,
           created_by: user?.id,
         });
+        if (created) {
+          setAlbums(prev => [
+            created,
+            ...prev.filter(a => a.id !== created.id && a.name.trim().toLowerCase() !== created.name.trim().toLowerCase())
+          ]);
+        }
         setToastMessage('புதிய ஆல்பம் வெற்றிகரமாக உருவாக்கப்பட்டது!');
       }
 
       setShowAlbumModal(false);
-      await loadAlbums();
+      setAlbumName('');
+      setAlbumDesc('');
+      setAlbumCoverFile(null);
+      setAlbumCoverPreview('');
+      // Background sync to ensure all data is in sync
+      loadAlbums().catch(() => {});
       setTimeout(() => setToastMessage(''), 4000);
     } catch (err) {
       setErrorMessage('Failed to save album: ' + err.message);
@@ -196,12 +208,13 @@ export default function Gallery() {
     setDeletingAlbum(true);
     try {
       await dataService.deleteAlbum(albumToDelete.id, albumToDelete.name);
+      setAlbums(prev => prev.filter(a => a.id !== albumToDelete.id && a.name !== albumToDelete.name));
       setIsDeleteAlbumOpen(false);
       if (selectedAlbum?.id === albumToDelete.id) {
         setSelectedAlbum(null);
       }
       setToastMessage('ஆல்பம் வெற்றிகரமாக நீக்கப்பட்டது.');
-      await loadAlbums();
+      loadAlbums().catch(() => {});
       setTimeout(() => setToastMessage(''), 4000);
     } catch (err) {
       alert('Delete failed: ' + err.message);

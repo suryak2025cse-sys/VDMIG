@@ -969,6 +969,11 @@ export const dataService = {
   // ALBUMS & GALLERY
   // -------------------------------------------------------------
   async getAlbums() {
+    let resultAlbums = [];
+    const local = getLocalData();
+    const localAlbums = local.albums || [];
+    const localMedia = local.gallery || [];
+
     if (isSupabaseConfigured) {
       try {
         const { data: albumsData, error: albumsError } = await supabase
@@ -976,13 +981,13 @@ export const dataService = {
           .select('*')
           .order('created_at', { ascending: false });
 
-        if (!albumsError && albumsData) {
+        if (!albumsError && albumsData && albumsData.length > 0) {
           const { data: mediaItems } = await supabase
             .from('gallery')
             .select('id, album_id, event_name, media_type, file_url, image_url');
           const media = mediaItems || [];
 
-          return albumsData.map(alb => {
+          resultAlbums = albumsData.map(alb => {
             const albumMedia = media.filter(
               m => m.album_id === alb.id || (m.event_name && m.event_name.trim().toLowerCase() === alb.name.trim().toLowerCase())
             );
@@ -999,89 +1004,113 @@ export const dataService = {
           });
         }
       } catch (err) {
-        console.warn('Albums table query error, falling back to gallery event grouping:', err);
+        console.warn('Albums table query error:', err);
       }
 
-      // Fallback: derive albums from gallery event_name if albums table does not exist
-      const { data: galleryItems } = await supabase
-        .from('gallery')
-        .select('*')
-        .order('created_at', { ascending: false });
-      const items = galleryItems || [];
-      const distinctNames = Array.from(new Set(items.map(i => i.event_name || 'General').filter(Boolean)));
-      return distinctNames.map(name => {
-        const matching = items.filter(i => (i.event_name || 'General') === name);
-        const firstImg = matching.find(m => m.media_type !== 'video' || m.image_url);
-        return {
-          id: name,
-          name,
-          description: '',
-          cover_image_url: firstImg?.image_url || firstImg?.file_url || '',
-          media_count: matching.length,
-          image_count: matching.filter(m => m.media_type !== 'video').length,
-          video_count: matching.filter(m => m.media_type === 'video').length,
-          created_at: matching[0]?.created_at || new Date().toISOString(),
-        };
-      });
+      // Also merge distinct event_name from gallery
+      try {
+        const { data: galleryItems } = await supabase
+          .from('gallery')
+          .select('*')
+          .order('created_at', { ascending: false });
+        const items = galleryItems || [];
+        const distinctNames = Array.from(new Set(items.map(i => i.event_name).filter(Boolean)));
+
+        distinctNames.forEach(name => {
+          if (!resultAlbums.some(a => a.name.trim().toLowerCase() === name.trim().toLowerCase())) {
+            const matching = items.filter(i => (i.event_name || '') === name);
+            const firstImg = matching.find(m => m.media_type !== 'video' || m.image_url);
+            resultAlbums.push({
+              id: name,
+              name,
+              description: '',
+              cover_image_url: firstImg?.image_url || firstImg?.file_url || '',
+              media_count: matching.length,
+              image_count: matching.filter(m => m.media_type !== 'video').length,
+              video_count: matching.filter(m => m.media_type === 'video').length,
+              created_at: matching[0]?.created_at || new Date().toISOString(),
+            });
+          }
+        });
+      } catch (err) {
+        console.warn('Gallery query error in getAlbums:', err);
+      }
     }
 
-    const local = getLocalData();
-    if (!local.albums) local.albums = [];
-    const media = local.gallery || [];
-
-    // If local.albums is empty but local.gallery has items, create default albums
-    if (local.albums.length === 0 && media.length > 0) {
-      const distinct = Array.from(new Set(media.map(m => m.event_name || 'General').filter(Boolean)));
-      local.albums = distinct.map(name => ({
-        id: `alb-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        name,
-        description: '',
-        cover_image_url: media.find(m => (m.event_name || 'General') === name)?.image_url || '',
-        created_at: new Date().toISOString(),
-      }));
-      saveLocalData(local);
-    }
-
-    return (local.albums || []).map(alb => {
-      const albumMedia = media.filter(
-        m => m.album_id === alb.id || (m.event_name && m.event_name.trim().toLowerCase() === alb.name.trim().toLowerCase())
+    // Always merge any local albums not already in resultAlbums
+    localAlbums.forEach(localAlb => {
+      const exists = resultAlbums.some(
+        r => r.id === localAlb.id || r.name.trim().toLowerCase() === localAlb.name.trim().toLowerCase()
       );
-      const imageCount = albumMedia.filter(m => m.media_type !== 'video').length;
-      const videoCount = albumMedia.filter(m => m.media_type === 'video').length;
-      const firstImg = albumMedia.find(m => m.media_type !== 'video');
-      return {
-        ...alb,
-        media_count: albumMedia.length,
-        image_count: imageCount,
-        video_count: videoCount,
-        cover_image_url: alb.cover_image_url || firstImg?.file_url || firstImg?.image_url || null,
-      };
+      if (!exists) {
+        const matchingMedia = localMedia.filter(
+          m => m.album_id === localAlb.id || (m.event_name && m.event_name.trim().toLowerCase() === localAlb.name.trim().toLowerCase())
+        );
+        resultAlbums.push({
+          ...localAlb,
+          media_count: matchingMedia.length,
+          image_count: matchingMedia.filter(m => m.media_type !== 'video').length,
+          video_count: matchingMedia.filter(m => m.media_type === 'video').length,
+          cover_image_url: localAlb.cover_image_url || matchingMedia[0]?.file_url || matchingMedia[0]?.image_url || null,
+        });
+      }
     });
+
+    return resultAlbums;
   },
 
   async createAlbum(albumData) {
+    const albumPayload = {
+      name: albumData.name.trim(),
+      description: albumData.description ? albumData.description.trim() : '',
+      cover_image_url: albumData.cover_image_url || null,
+    };
+    if (albumData.created_by && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(albumData.created_by)) {
+      albumPayload.created_by = albumData.created_by;
+    }
+
+    let created = null;
+
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase.from('albums').insert(albumData).select().single();
-        if (!error && data) return data;
+        const { data, error } = await supabase.from('albums').insert(albumPayload).select().single();
+        if (!error && data) {
+          created = {
+            ...data,
+            media_count: 0,
+            image_count: 0,
+            video_count: 0,
+          };
+        } else if (error) {
+          console.warn('Supabase createAlbum error:', error.message);
+        }
       } catch (err) {
-        console.warn('Supabase createAlbum error, using local fallback:', err);
+        console.warn('Supabase createAlbum exception:', err);
       }
     }
+
     const local = getLocalData();
     if (!local.albums) local.albums = [];
-    const newAlbum = {
-      id: `alb-${Date.now()}`,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      media_count: 0,
-      image_count: 0,
-      video_count: 0,
-      ...albumData,
-    };
-    local.albums = [newAlbum, ...local.albums];
+
+    if (!created) {
+      created = {
+        id: `alb-${Date.now()}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        media_count: 0,
+        image_count: 0,
+        video_count: 0,
+        ...albumPayload,
+      };
+    }
+
+    local.albums = [
+      created,
+      ...(local.albums.filter(a => a.id !== created.id && a.name.trim().toLowerCase() !== created.name.trim().toLowerCase()))
+    ];
     saveLocalData(local);
-    return newAlbum;
+
+    return created;
   },
 
   async updateAlbum(id, updateFields) {
@@ -1122,7 +1151,6 @@ export const dataService = {
     if (isSupabaseConfigured) {
       try {
         await supabase.from('albums').delete().eq('id', id);
-        return true;
       } catch (err) {
         console.warn('Supabase deleteAlbum error:', err);
       }
@@ -1168,51 +1196,92 @@ export const dataService = {
   },
 
   async addAlbumMedia(mediaData) {
+    const isVideo = mediaData.media_type === 'video' || /\.(mp4|mov|webm|m4v)$/i.test(mediaData.file_url || '');
+    const mediaType = isVideo ? 'video' : 'image';
+
     const payload = {
-      ...mediaData,
+      event_name: mediaData.event_name || 'General',
+      title: mediaData.title || (isVideo ? 'காணொளி' : 'புகைப்படம்'),
       image_url: mediaData.file_url || mediaData.image_url,
       file_url: mediaData.file_url || mediaData.image_url,
-      media_type: mediaData.media_type || (/\.(mp4|mov|webm|m4v)$/i.test(mediaData.file_url || '') ? 'video' : 'image'),
+      media_type: mediaType,
+      file_type: mediaData.file_type || null,
+      file_size: mediaData.file_size || null,
+      public_id: mediaData.public_id || null,
     };
+
+    if (mediaData.album_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mediaData.album_id)) {
+      payload.album_id = mediaData.album_id;
+    }
+    if (mediaData.uploaded_by && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mediaData.uploaded_by)) {
+      payload.uploaded_by = mediaData.uploaded_by;
+    }
+
+    let savedItem = null;
 
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.from('gallery').insert(payload).select().single();
         if (!error && data) {
-          if (payload.album_id && payload.media_type === 'image') {
+          savedItem = {
+            ...data,
+            album_id: mediaData.album_id || data.album_id,
+            file_url: data.file_url || data.image_url,
+            media_type: data.media_type || mediaType,
+          };
+          if (payload.album_id && mediaType === 'image') {
             await supabase
               .from('albums')
               .update({ cover_image_url: payload.file_url })
               .eq('id', payload.album_id)
               .is('cover_image_url', null);
           }
-          return {
-            ...data,
-            file_url: data.file_url || data.image_url,
-            media_type: data.media_type || payload.media_type,
+        } else if (error) {
+          console.warn('Supabase addAlbumMedia error, attempting basic fallback insert:', error.message);
+          const basicPayload = {
+            event_name: payload.event_name,
+            title: payload.title,
+            image_url: payload.image_url,
           };
+          if (payload.uploaded_by) basicPayload.uploaded_by = payload.uploaded_by;
+          const { data: fbData } = await supabase.from('gallery').insert(basicPayload).select().single();
+          if (fbData) {
+            savedItem = {
+              ...fbData,
+              album_id: mediaData.album_id,
+              file_url: payload.file_url,
+              media_type: mediaType,
+            };
+          }
         }
       } catch (err) {
-        console.warn('Supabase addAlbumMedia error, using local fallback:', err);
+        console.warn('Supabase addAlbumMedia exception, using local fallback:', err);
       }
     }
 
     const local = getLocalData();
-    const newMedia = {
-      id: `media-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      created_at: new Date().toISOString(),
-      ...payload,
-    };
-    local.gallery = [newMedia, ...(local.gallery || [])];
+    if (!local.gallery) local.gallery = [];
+    if (!savedItem) {
+      savedItem = {
+        id: `media-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        created_at: new Date().toISOString(),
+        ...payload,
+        album_id: mediaData.album_id,
+      };
+    }
 
-    if (payload.album_id && payload.media_type === 'image') {
-      const albIdx = (local.albums || []).findIndex(a => a.id === payload.album_id);
+    local.gallery = [savedItem, ...local.gallery];
+
+    // If album doesn't have cover image and this is an image, set it
+    if (mediaData.album_id && mediaType === 'image') {
+      const albIdx = (local.albums || []).findIndex(a => a.id === mediaData.album_id || a.name === mediaData.event_name);
       if (albIdx !== -1 && !local.albums[albIdx].cover_image_url) {
         local.albums[albIdx].cover_image_url = payload.file_url;
       }
     }
     saveLocalData(local);
-    return newMedia;
+
+    return savedItem;
   },
 
   async deleteAlbumMedia(id) {
