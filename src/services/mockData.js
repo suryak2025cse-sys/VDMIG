@@ -16,6 +16,8 @@ export const initialDemoData = {
   events: [],
   announcements: [],
   attendance_sessions: [],
+  albums: [],
   gallery: [],
+  user_blocks: [],
   notifications: [],
 };

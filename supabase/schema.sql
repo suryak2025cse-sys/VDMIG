@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('super_admin', 'leader', 'payment_collector', 'member')),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'blocked')),
     rejection_reason TEXT,
+    blocked_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    blocked_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -161,18 +163,45 @@ CREATE TABLE IF NOT EXISTS public.attendance_records (
     UNIQUE(session_id, member_id)
 );
 
--- 13. GALLERY TABLE
+-- 13. ALBUMS TABLE
+CREATE TABLE IF NOT EXISTS public.albums (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    description TEXT,
+    cover_image_url TEXT,
+    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 14. GALLERY & ALBUM MEDIA TABLE
 CREATE TABLE IF NOT EXISTS public.gallery (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    album_id UUID REFERENCES public.albums(id) ON DELETE CASCADE,
     event_id UUID REFERENCES public.events(id) ON DELETE SET NULL,
     event_name TEXT,
     title TEXT,
     image_url TEXT NOT NULL,
+    file_url TEXT,
+    media_type TEXT NOT NULL DEFAULT 'image' CHECK (media_type IN ('image', 'video')),
+    file_type TEXT,
+    file_size BIGINT,
+    public_id TEXT,
     uploaded_by UUID REFERENCES public.profiles(id),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 14. NOTIFICATIONS TABLE
+-- 15. USER BLOCKS RELATIONSHIP TABLE
+CREATE TABLE IF NOT EXISTS public.user_blocks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    blocker_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    blocked_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(blocker_id, blocked_id)
+);
+
+-- 16. NOTIFICATIONS TABLE
 CREATE TABLE IF NOT EXISTS public.notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -275,6 +304,8 @@ ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gallery ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.albums ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_blocks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- 1. PROFILES POLICIES
@@ -376,14 +407,31 @@ CREATE POLICY "View attendance records" ON public.attendance_records
 CREATE POLICY "Manage attendance records" ON public.attendance_records
     FOR ALL USING (public.is_leader_or_admin());
 
--- 9. GALLERY POLICIES
+-- 9. GALLERY & ALBUMS POLICIES
 CREATE POLICY "View gallery" ON public.gallery
     FOR SELECT USING (public.is_approved());
 
 CREATE POLICY "Manage gallery" ON public.gallery
     FOR ALL USING (public.is_leader_or_admin());
 
--- 10. NOTIFICATIONS POLICIES
+CREATE POLICY "View albums" ON public.albums
+    FOR SELECT USING (public.is_approved());
+
+CREATE POLICY "Manage albums" ON public.albums
+    FOR ALL USING (public.is_leader_or_admin());
+
+-- 10. USER BLOCKS POLICIES
+CREATE POLICY "View user blocks" ON public.user_blocks
+    FOR SELECT USING (
+        auth.uid() = blocker_id OR public.is_leader_or_admin()
+    );
+
+CREATE POLICY "Manage user blocks" ON public.user_blocks
+    FOR ALL USING (
+        auth.uid() = blocker_id OR public.is_leader_or_admin()
+    );
+
+-- 11. NOTIFICATIONS POLICIES
 CREATE POLICY "View own notifications" ON public.notifications
     FOR SELECT USING (auth.uid() = user_id);
 

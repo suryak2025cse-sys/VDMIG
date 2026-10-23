@@ -35,6 +35,8 @@ export default function Members() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'blocked'
+  const [toastMessage, setToastMessage] = useState('');
 
   // Action dialog states
   const [selectedMember, setSelectedMember] = useState(null);
@@ -102,17 +104,27 @@ export default function Members() {
         }
       } else if (actionType === 'reject') {
         await dataService.updateProfileStatus(selectedMember.id, 'rejected', rejectionReason);
+        setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, status: 'rejected', rejection_reason: rejectionReason } : m));
       } else if (actionType === 'block') {
-        await dataService.updateProfileStatus(selectedMember.id, 'blocked');
+        await dataService.blockUser(selectedMember.id, user?.id, rejectionReason);
+        setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, status: 'blocked', blocked_by: user?.id, blocked_at: new Date().toISOString() } : m));
+        setToastMessage(`${selectedMember.name} கணக்கு முடக்கப்பட்டது.`);
+        setTimeout(() => setToastMessage(''), 4000);
       } else if (actionType === 'unblock') {
-        await dataService.updateProfileStatus(selectedMember.id, 'approved');
+        await dataService.unblockUser(selectedMember.id, user?.id);
+        setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, status: 'approved', blocked_by: null, blocked_at: null } : m));
+        setToastMessage(`${selectedMember.name} கணக்கு வெற்றிகரமாக மீளமைக்கப்பட்டது (Unblocked).`);
+        setTimeout(() => setToastMessage(''), 4000);
       } else if (actionType === 'delete') {
         await dataService.deleteProfile(selectedMember.id);
+        setMembers(prev => prev.filter(m => m.id !== selectedMember.id));
       } else if (actionType === 'deleteAll') {
         await dataService.deleteAllProfiles();
+        setMembers([]);
       }
-      await loadMembers();
       setIsConfirmOpen(false);
+      // Background sync
+      loadMembers().catch(() => {});
     } catch (err) {
       alert('Action failed: ' + err.message);
     } finally {
@@ -167,16 +179,28 @@ export default function Members() {
   };
 
   // Filter & Search logic
+  const pendingCount = members.filter(m => m.status === 'pending').length;
+  const blockedCount = members.filter(m => m.status === 'blocked').length;
+
   const filteredMembers = members.filter((m) => {
     const matchesSearch =
       m.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.phone?.includes(searchQuery) ||
       m.email?.toLowerCase().includes(searchQuery.toLowerCase());
 
+    const matchesTab =
+      activeTab === 'all'
+        ? true
+        : activeTab === 'pending'
+        ? m.status === 'pending'
+        : activeTab === 'blocked'
+        ? m.status === 'blocked'
+        : true;
+
     const matchesStatus = statusFilter === 'all' || m.status === statusFilter;
     const matchesRole = roleFilter === 'all' || m.role === roleFilter;
 
-    return matchesSearch && matchesStatus && matchesRole;
+    return matchesSearch && matchesTab && matchesStatus && matchesRole;
   });
 
   return (
@@ -215,6 +239,104 @@ export default function Members() {
           )}
         </div>
       </div>
+
+      {/* Toast Message */}
+      {toastMessage && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage('')}
+            className="text-emerald-700 hover:text-emerald-900 p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Navigation Tabs */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('all');
+            setStatusFilter('all');
+          }}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'all'
+              ? 'bg-amber-500 text-slate-950 shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>{t('members.allMembers')}</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-900/10 font-bold">
+            {members.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('pending');
+            setStatusFilter('pending');
+          }}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'pending'
+              ? 'bg-amber-500 text-slate-950 shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <AlertCircle className="w-4 h-4 text-amber-600" />
+          <span>{t('members.pendingApproval')}</span>
+          {pendingCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-600 text-white font-black">
+              {pendingCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('blocked');
+            setStatusFilter('blocked');
+          }}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'blocked'
+              ? 'bg-rose-600 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Ban className="w-4 h-4 text-rose-500" />
+          <span>{t('members.blockedUsers')}</span>
+          {blockedCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-700 text-white font-black">
+              {blockedCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Blocked Users Info Banner (when tab active) */}
+      {activeTab === 'blocked' && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-3">
+          <div className="p-2 rounded-xl bg-rose-100 text-rose-700 shrink-0">
+            <Ban className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-xs sm:text-sm font-bold text-rose-900">
+              {t('members.blockedUsers')} (Blocked Members)
+            </h3>
+            <p className="text-[11px] sm:text-xs text-rose-700 mt-0.5">
+              முடக்கப்பட்ட பயனர்களின் கணக்குகள் இங்கே பட்டியலிடப்பட்டுள்ளன. மீண்டும் அனுமதி வழங்க &quot;{t('members.unblock')}&quot; பொத்தானை அழுத்தவும்.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between">
@@ -464,6 +586,17 @@ export default function Members() {
                       className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 text-xs font-semibold cursor-pointer"
                     >
                       {t('members.block')}
+                    </button>
+                  )}
+
+                  {m.status === 'blocked' && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAction(m, 'unblock')}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center gap-1 border border-emerald-200 cursor-pointer"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{t('members.unblock')}</span>
                     </button>
                   )}
 

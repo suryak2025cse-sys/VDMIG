@@ -8,6 +8,7 @@
 export const CLOUDINARY_FOLDERS = {
   songs: 'community/songs',
   gallery: 'community/gallery',
+  albums: 'community/albums',
   'payment-proofs': 'community/payment-screenshots',
   avatars: 'community/profiles',
   logos: 'community/logos',
@@ -22,8 +23,8 @@ export const FILE_VALIDATION = {
     errorMsg: 'Please upload a valid image file (JPG, PNG, WEBP) under 10MB.',
   },
   video: {
-    maxSize: 50 * 1024 * 1024, // 50MB (Songs/Audio handled as video resource in Cloudinary)
-    allowedExtensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'mp4', 'webm'],
+    maxSize: 50 * 1024 * 1024, // 50MB (Songs/Audio/Video handled as video resource in Cloudinary)
+    allowedExtensions: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'mp4', 'mov', 'webm', 'm4v'],
     allowedMimes: [
       'audio/mpeg',
       'audio/mp3',
@@ -35,8 +36,10 @@ export const FILE_VALIDATION = {
       'audio/ogg',
       'video/mp4',
       'video/webm',
+      'video/quicktime',
+      'video/x-m4v',
     ],
-    errorMsg: 'Please upload a valid audio song file (MP3, WAV, M4A) under 50MB.',
+    errorMsg: 'Please upload a valid video/audio file (MP4, MOV, WebM, MP3) under 50MB.',
   },
 };
 
@@ -70,7 +73,11 @@ export function validateMediaFile(file, type = 'image') {
  */
 export async function cloudinaryUpload({ file, bucket = 'gallery', customName = '', onProgress = null }) {
   const folder = CLOUDINARY_FOLDERS[bucket] || `community/${bucket}`;
-  const isAudioOrVideo = bucket === 'songs' || file.type.startsWith('audio/') || file.type.startsWith('video/');
+  const isAudioOrVideo =
+    bucket === 'songs' ||
+    file.type.startsWith('audio/') ||
+    file.type.startsWith('video/') ||
+    /\.(mp4|mov|webm|m4v|mkv|mp3|wav|m4a|aac|ogg)$/i.test(file.name);
   const resourceType = isAudioOrVideo ? 'video' : 'image';
 
   // 1. Validate file

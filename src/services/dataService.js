@@ -28,6 +28,9 @@ function getLocalData() {
     if (!parsed.profiles) parsed.profiles = [];
     if (!parsed.payments) parsed.payments = [];
     if (!parsed.collectors) parsed.collectors = [];
+    if (!parsed.albums) parsed.albums = [];
+    if (!parsed.gallery) parsed.gallery = [];
+    if (!parsed.user_blocks) parsed.user_blocks = [];
     return parsed;
   } catch (e) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(initialDemoData));
@@ -153,26 +156,156 @@ export const dataService = {
     return newProfile;
   },
 
-  async updateProfileStatus(userId, status, rejectionReason = '') {
+  async updateProfileStatus(userId, status, rejectionReason = '', blockerId = null) {
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('profiles')
-        .update({ status, rejection_reason: rejectionReason, updated_at: new Date().toISOString() })
-        .eq('id', userId)
-        .select();
-      if (error) throw error;
+      // 1. Try updating with block tracking columns
+      const updatePayload = {
+        status,
+        rejection_reason: rejectionReason,
+        updated_at: new Date().toISOString(),
+      };
+      if (status === 'blocked') {
+        if (blockerId) updatePayload.blocked_by = blockerId;
+        updatePayload.blocked_at = new Date().toISOString();
+      } else if (status === 'approved') {
+        updatePayload.blocked_by = null;
+        updatePayload.blocked_at = null;
+        updatePayload.rejection_reason = null;
+      }
+
+      let data, error;
+      try {
+        const res = await supabase
+          .from('profiles')
+          .update(updatePayload)
+          .eq('id', userId)
+          .select();
+        data = res.data;
+        error = res.error;
+      } catch (e) {
+        error = e;
+      }
+
+      // Fallback if blocked_by column doesn't exist yet in Supabase
+      if (error && (error.message?.includes('blocked_by') || error.message?.includes('column'))) {
+        const fallbackRes = await supabase
+          .from('profiles')
+          .update({ status, rejection_reason: rejectionReason, updated_at: new Date().toISOString() })
+          .eq('id', userId)
+          .select();
+        if (fallbackRes.error) throw fallbackRes.error;
+        data = fallbackRes.data;
+      } else if (error) {
+        throw error;
+      }
+
+      // Also sync user_blocks table if appropriate
+      if (status === 'blocked' && blockerId) {
+        try {
+          await supabase.from('user_blocks').upsert({
+            blocker_id: blockerId,
+            blocked_id: userId,
+            reason: rejectionReason || 'Blocked by admin/leader',
+          }, { onConflict: 'blocker_id,blocked_id' });
+        } catch (e) {
+          console.warn('user_blocks upsert warning:', e.message);
+        }
+      } else if (status === 'approved') {
+        try {
+          await supabase.from('user_blocks').delete().eq('blocked_id', userId);
+        } catch (e) {
+          console.warn('user_blocks delete warning:', e.message);
+        }
+      }
+
       return data && data.length > 0 ? data[0] : null;
     }
+
     const local = getLocalData();
     const index = local.profiles.findIndex(p => p.id === userId);
     if (index !== -1) {
       local.profiles[index].status = status;
       local.profiles[index].rejection_reason = rejectionReason;
       local.profiles[index].updated_at = new Date().toISOString();
+      if (status === 'blocked') {
+        local.profiles[index].blocked_by = blockerId;
+        local.profiles[index].blocked_at = new Date().toISOString();
+        if (blockerId) {
+          if (!local.user_blocks) local.user_blocks = [];
+          if (!local.user_blocks.some(b => b.blocked_id === userId && b.blocker_id === blockerId)) {
+            local.user_blocks.push({
+              id: `blk-${Date.now()}`,
+              blocker_id: blockerId,
+              blocked_id: userId,
+              reason: rejectionReason,
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
+      } else if (status === 'approved') {
+        local.profiles[index].blocked_by = null;
+        local.profiles[index].blocked_at = null;
+        local.profiles[index].rejection_reason = null;
+        if (local.user_blocks) {
+          local.user_blocks = local.user_blocks.filter(b => b.blocked_id !== userId);
+        }
+      }
       saveLocalData(local);
       return local.profiles[index];
     }
     throw new Error('User not found');
+  },
+
+  async blockUser(targetUserId, blockerId, reason = '') {
+    return await this.updateProfileStatus(targetUserId, 'blocked', reason, blockerId);
+  },
+
+  async unblockUser(targetUserId, blockerId = null) {
+    return await this.updateProfileStatus(targetUserId, 'approved', '', blockerId);
+  },
+
+  async getBlockedUsers(currentUserId = null, isLeaderOrAdmin = false) {
+    if (isSupabaseConfigured) {
+      try {
+        // Query profiles with status 'blocked'
+        let query = supabase.from('profiles').select('*').eq('status', 'blocked');
+        if (!isLeaderOrAdmin && currentUserId) {
+          query = query.eq('blocked_by', currentUserId);
+        }
+        const { data, error } = await query;
+        if (!error && data) {
+          return data;
+        }
+      } catch (err) {
+        console.warn('Failed to query blocked profiles:', err);
+      }
+      // Try from user_blocks if blocked_by was not populated
+      try {
+        let ubQuery = supabase.from('user_blocks').select('*, profiles!user_blocks_blocked_id_fkey(*)');
+        if (!isLeaderOrAdmin && currentUserId) {
+          ubQuery = ubQuery.eq('blocker_id', currentUserId);
+        }
+        const { data: ubData } = await ubQuery;
+        if (ubData && ubData.length > 0) {
+          return ubData.map(ub => ({
+            ...ub.profiles,
+            blocked_by: ub.blocker_id,
+            blocked_at: ub.created_at,
+          })).filter(Boolean);
+        }
+      } catch (e) {
+        // Fall through
+      }
+      return [];
+    }
+
+    const local = getLocalData();
+    const blockedProfiles = (local.profiles || []).filter(p => {
+      if (p.status !== 'blocked') return false;
+      if (isLeaderOrAdmin) return true;
+      return !currentUserId || p.blocked_by === currentUserId;
+    });
+    return blockedProfiles;
   },
 
   async updateProfileRole(userId, role) {
@@ -833,53 +966,303 @@ export const dataService = {
   },
 
   // -------------------------------------------------------------
-  // GALLERY
+  // ALBUMS & GALLERY
   // -------------------------------------------------------------
-  async getGallery() {
+  async getAlbums() {
     if (isSupabaseConfigured) {
-      const { data, error } = await supabase.from('gallery').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
-    }
-    const local = getLocalData();
-    return local.gallery || [];
-  },
+      try {
+        const { data: albumsData, error: albumsError } = await supabase
+          .from('albums')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-  async addGalleryImage(imageData) {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase.from('gallery').insert(imageData).select().single();
-      if (error) throw error;
-      return data;
-    }
-    const local = getLocalData();
-    const newImg = {
-      id: `gal-${Date.now()}`,
-      created_at: new Date().toISOString(),
-      ...imageData,
-    };
-    local.gallery = [newImg, ...(local.gallery || [])];
-    saveLocalData(local);
-    return newImg;
-  },
+        if (!albumsError && albumsData) {
+          const { data: mediaItems } = await supabase
+            .from('gallery')
+            .select('id, album_id, event_name, media_type, file_url, image_url');
+          const media = mediaItems || [];
 
-  async deleteGalleryImage(id) {
-    if (isSupabaseConfigured) {
-      const { data: record } = await supabase.from('gallery').select('image_url').eq('id', id).maybeSingle();
-      const { error } = await supabase.from('gallery').delete().eq('id', id);
-      if (error) throw error;
-      if (record?.image_url) {
-        await cloudinaryDelete(record.image_url, 'image').catch(() => {});
+          return albumsData.map(alb => {
+            const albumMedia = media.filter(
+              m => m.album_id === alb.id || (m.event_name && m.event_name.trim().toLowerCase() === alb.name.trim().toLowerCase())
+            );
+            const imageCount = albumMedia.filter(m => m.media_type !== 'video').length;
+            const videoCount = albumMedia.filter(m => m.media_type === 'video').length;
+            const firstImg = albumMedia.find(m => m.media_type !== 'video');
+            return {
+              ...alb,
+              media_count: albumMedia.length,
+              image_count: imageCount,
+              video_count: videoCount,
+              cover_image_url: alb.cover_image_url || firstImg?.file_url || firstImg?.image_url || null,
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('Albums table query error, falling back to gallery event grouping:', err);
       }
-      return true;
+
+      // Fallback: derive albums from gallery event_name if albums table does not exist
+      const { data: galleryItems } = await supabase
+        .from('gallery')
+        .select('*')
+        .order('created_at', { ascending: false });
+      const items = galleryItems || [];
+      const distinctNames = Array.from(new Set(items.map(i => i.event_name || 'General').filter(Boolean)));
+      return distinctNames.map(name => {
+        const matching = items.filter(i => (i.event_name || 'General') === name);
+        const firstImg = matching.find(m => m.media_type !== 'video' || m.image_url);
+        return {
+          id: name,
+          name,
+          description: '',
+          cover_image_url: firstImg?.image_url || firstImg?.file_url || '',
+          media_count: matching.length,
+          image_count: matching.filter(m => m.media_type !== 'video').length,
+          video_count: matching.filter(m => m.media_type === 'video').length,
+          created_at: matching[0]?.created_at || new Date().toISOString(),
+        };
+      });
     }
+
+    const local = getLocalData();
+    if (!local.albums) local.albums = [];
+    const media = local.gallery || [];
+
+    // If local.albums is empty but local.gallery has items, create default albums
+    if (local.albums.length === 0 && media.length > 0) {
+      const distinct = Array.from(new Set(media.map(m => m.event_name || 'General').filter(Boolean)));
+      local.albums = distinct.map(name => ({
+        id: `alb-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        name,
+        description: '',
+        cover_image_url: media.find(m => (m.event_name || 'General') === name)?.image_url || '',
+        created_at: new Date().toISOString(),
+      }));
+      saveLocalData(local);
+    }
+
+    return (local.albums || []).map(alb => {
+      const albumMedia = media.filter(
+        m => m.album_id === alb.id || (m.event_name && m.event_name.trim().toLowerCase() === alb.name.trim().toLowerCase())
+      );
+      const imageCount = albumMedia.filter(m => m.media_type !== 'video').length;
+      const videoCount = albumMedia.filter(m => m.media_type === 'video').length;
+      const firstImg = albumMedia.find(m => m.media_type !== 'video');
+      return {
+        ...alb,
+        media_count: albumMedia.length,
+        image_count: imageCount,
+        video_count: videoCount,
+        cover_image_url: alb.cover_image_url || firstImg?.file_url || firstImg?.image_url || null,
+      };
+    });
+  },
+
+  async createAlbum(albumData) {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.from('albums').insert(albumData).select().single();
+        if (!error && data) return data;
+      } catch (err) {
+        console.warn('Supabase createAlbum error, using local fallback:', err);
+      }
+    }
+    const local = getLocalData();
+    if (!local.albums) local.albums = [];
+    const newAlbum = {
+      id: `alb-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      media_count: 0,
+      image_count: 0,
+      video_count: 0,
+      ...albumData,
+    };
+    local.albums = [newAlbum, ...local.albums];
+    saveLocalData(local);
+    return newAlbum;
+  },
+
+  async updateAlbum(id, updateFields) {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('albums')
+          .update({ ...updateFields, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .select()
+          .maybeSingle();
+        if (!error && data) return data;
+      } catch (err) {
+        console.warn('Supabase updateAlbum error:', err);
+      }
+    }
+    const local = getLocalData();
+    const idx = (local.albums || []).findIndex(a => a.id === id);
+    if (idx !== -1) {
+      local.albums[idx] = {
+        ...local.albums[idx],
+        ...updateFields,
+        updated_at: new Date().toISOString(),
+      };
+      saveLocalData(local);
+      return local.albums[idx];
+    }
+    return null;
+  },
+
+  async deleteAlbum(id, albumName = '') {
+    // 1. Get and delete all media in this album
+    const mediaList = await this.getAlbumMedia(id, albumName);
+    for (const item of mediaList) {
+      await this.deleteAlbumMedia(item.id);
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('albums').delete().eq('id', id);
+        return true;
+      } catch (err) {
+        console.warn('Supabase deleteAlbum error:', err);
+      }
+    }
+    const local = getLocalData();
+    local.albums = (local.albums || []).filter(a => a.id !== id && a.name !== albumName);
+    saveLocalData(local);
+    return true;
+  },
+
+  async getAlbumMedia(albumId, albumName = '') {
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabase.from('gallery').select('*');
+        if (albumId && albumId.length === 36) {
+          query = query.or(`album_id.eq.${albumId},event_name.eq.${albumName || albumId}`);
+        } else if (albumName) {
+          query = query.eq('event_name', albumName);
+        }
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (!error && data) {
+          return data.map(m => ({
+            ...m,
+            file_url: m.file_url || m.image_url,
+            media_type: m.media_type || (/\.(mp4|mov|webm|m4v)$/i.test(m.file_url || m.image_url || '') ? 'video' : 'image'),
+          }));
+        }
+      } catch (err) {
+        console.warn('Supabase getAlbumMedia error, falling back:', err);
+      }
+    }
+
+    const local = getLocalData();
+    const items = (local.gallery || []).filter(m =>
+      m.album_id === albumId ||
+      (albumName && m.event_name && m.event_name.trim().toLowerCase() === albumName.trim().toLowerCase())
+    );
+    return items.map(m => ({
+      ...m,
+      file_url: m.file_url || m.image_url,
+      media_type: m.media_type || (/\.(mp4|mov|webm|m4v)$/i.test(m.file_url || m.image_url || '') ? 'video' : 'image'),
+    }));
+  },
+
+  async addAlbumMedia(mediaData) {
+    const payload = {
+      ...mediaData,
+      image_url: mediaData.file_url || mediaData.image_url,
+      file_url: mediaData.file_url || mediaData.image_url,
+      media_type: mediaData.media_type || (/\.(mp4|mov|webm|m4v)$/i.test(mediaData.file_url || '') ? 'video' : 'image'),
+    };
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.from('gallery').insert(payload).select().single();
+        if (!error && data) {
+          if (payload.album_id && payload.media_type === 'image') {
+            await supabase
+              .from('albums')
+              .update({ cover_image_url: payload.file_url })
+              .eq('id', payload.album_id)
+              .is('cover_image_url', null);
+          }
+          return {
+            ...data,
+            file_url: data.file_url || data.image_url,
+            media_type: data.media_type || payload.media_type,
+          };
+        }
+      } catch (err) {
+        console.warn('Supabase addAlbumMedia error, using local fallback:', err);
+      }
+    }
+
+    const local = getLocalData();
+    const newMedia = {
+      id: `media-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      created_at: new Date().toISOString(),
+      ...payload,
+    };
+    local.gallery = [newMedia, ...(local.gallery || [])];
+
+    if (payload.album_id && payload.media_type === 'image') {
+      const albIdx = (local.albums || []).findIndex(a => a.id === payload.album_id);
+      if (albIdx !== -1 && !local.albums[albIdx].cover_image_url) {
+        local.albums[albIdx].cover_image_url = payload.file_url;
+      }
+    }
+    saveLocalData(local);
+    return newMedia;
+  },
+
+  async deleteAlbumMedia(id) {
+    if (isSupabaseConfigured) {
+      try {
+        const { data: record } = await supabase
+          .from('gallery')
+          .select('id, file_url, image_url, media_type, public_id')
+          .eq('id', id)
+          .maybeSingle();
+
+        const { error } = await supabase.from('gallery').delete().eq('id', id);
+        if (error) throw error;
+
+        const assetUrl = record?.public_id || record?.file_url || record?.image_url;
+        const resType = record?.media_type === 'video' ? 'video' : 'image';
+        if (assetUrl) {
+          await cloudinaryDelete(assetUrl, resType).catch(() => {});
+        }
+        return true;
+      } catch (err) {
+        console.warn('Supabase deleteAlbumMedia error:', err);
+      }
+    }
+
     const local = getLocalData();
     const item = (local.gallery || []).find(g => g.id === id);
-    if (item?.image_url) {
-      await cloudinaryDelete(item.image_url, 'image').catch(() => {});
+    if (item) {
+      const assetUrl = item.public_id || item.file_url || item.image_url;
+      const resType = item.media_type === 'video' ? 'video' : 'image';
+      if (assetUrl) {
+        await cloudinaryDelete(assetUrl, resType).catch(() => {});
+      }
     }
     local.gallery = (local.gallery || []).filter(g => g.id !== id);
     saveLocalData(local);
     return true;
+  },
+
+  // Backwards compatibility for existing gallery calls
+  async getGallery() {
+    return await this.getAlbums();
+  },
+
+  async addGalleryImage(imageData) {
+    return await this.addAlbumMedia(imageData);
+  },
+
+  async deleteGalleryImage(id) {
+    return await this.deleteAlbumMedia(id);
   },
 
   // -------------------------------------------------------------
